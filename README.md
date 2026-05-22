@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/1246771359.svg)](https://doi.org/10.5281/zenodo.20346171)
+
 # A streamlined sort-to-sequence workflow for optimal single cell RNA sequencing
 Repository containing the code necessary to generate figures for the Chip Sort manuscript.
 
