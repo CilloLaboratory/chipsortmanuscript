@@ -1,0 +1,299 @@
+---
+title: "ChipSortPaper_Fig3"
+author: "Anthony R Cillo"
+date: "2026-05-22"
+output: github_document
+---
+
+## Load packages 
+
+```{r}
+
+library(readxl)
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+library(dplyr)
+library(tidyverse)
+library(qs)
+library(Seurat)
+library(here)
+
+```
+
+## Load data 
+
+```{r}
+
+df <- read_excel("../01_input/ChipSort_data_20260310.xlsx", sheet = "sort")
+
+ser <- qs::qread("../01_input/ser_hd9.qs")
+
+```
+
+## Establish color scheme
+
+```{r}
+
+## Refined based on cell types refinements below
+my_colors <- c(
+"Classical Monocytes" = "#79C6C8",
+"Inflamatory Monocytes" = "#F0A020",
+"Intermediate Monocytes"= "#5E548E", 
+"B cells" = "#E4571B", 
+"NK cells" = "#5F9C94", 
+"T cells" = "#9A8BB0", 
+"Nonclassical Monocytes" = "#8FAF8F",
+"Dendritic cells" = "#C97C6A",
+"pDCs" = "#0F4C5C")
+
+
+#color palette
+colors_pal <- c(
+"#79C6C8",
+"#F0A020",
+"#5E548E",
+"#8FAF8F",
+"#E4571B",
+"#5F9C94",
+"#9A8BB0",
+"#C97C6A",
+"#0F4C5C",
+"#C9D8A6",
+"#F06A4A",
+"#6A2E8C",
+"#5A7D4F",
+"#D8A18B",
+"#B7492A")
+
+
+```
+
+## Plot expected vs actual recovery from chip sorting 
+
+```{r}
+
+df_hd9 <- df 
+
+df_long <- df_hd9 %>%
+  pivot_longer(
+    cols = c(target_recovery, pre_filt_recovery),
+    names_to = "recovery_type",
+    values_to = "recovery")
+
+df_long$cells_loaded <- recode(df_long$cells_loaded,
+                               `2500`="2,500",
+                               `5000`="5,000",
+                               `10000`="10,000",
+                               `20000`="20,000")
+
+df_long$cells_loaded <- factor(
+  df_long$cells_loaded,
+  levels=c("2,500","5,000","10,000","20,000")
+)
+
+df_long$recovery_type <- factor(
+  df_long$recovery_type,
+  levels = c("target_recovery", "pre_filt_recovery"))
+
+p1 <- df_long %>%
+  filter(sort_type=="sort") %>% 
+  ggplot(., aes(x = cells_loaded, y = recovery, fill = recovery_type)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  theme_classic() +
+  labs(
+    x = "Cells Loaded",
+    y = "Cell Recovery",
+    fill = "Recovery Type") +
+  scale_fill_manual(values = c("#8FAF8F","#5E548E"),
+  labels = c("Targeted Recovery", "Actual Recovery")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title=element_text(size=20),
+        axis.text=element_text(size=18),
+        title=element_text(size=20),
+        legend.text = element_text(size=18),
+        legend.position=c(0.3,0.8)
+        )
+
+```
+
+## Refine dataset for plotting
+
+Note that we will remove a few clusters for being doublets, and we will refine cell type annotations across the dataset.
+
+```{r umap}
+
+ser$sample_name <- factor(
+  ser$sample_name,
+  levels = c("2.5K_Sort_2","5K_Sort_2", "10K_Sort_2", "20K_Sort_2"))
+
+## extract UMAP and metadata for pretty plotting
+umap <- Embeddings(ser,reduction="umap_int")
+meta <- ser@meta.data
+
+umap_meta <- cbind(umap,meta)
+colnames(umap_meta)[1:2] <- paste("UMAP_",1:2,sep="")
+umap_meta <- umap_meta %>%
+  filter(!grepl("9|11",RNA_snn_res.0.3)) %>%
+  mutate(refined_sample_names=recode(
+    sample_name,
+    `2.5K_Sort_2`="2,500 loaded cells",
+    `5K_Sort_2`="5,000 loaded cells",
+    `10K_Sort_2`="10,000 loaded cells",
+    `20K_Sort_2`="20,000 loaded cells"
+  )) %>%
+  mutate(`Cells loaded`=recode(
+    sample_name,
+    `2.5K_Sort_2`="2,500",
+    `5K_Sort_2`="5,000",
+    `10K_Sort_2`="10,000",
+    `20K_Sort_2`="20,000"
+  )) %>%
+  mutate(`Cell types`=cluster_anno) %>%
+  mutate(`Cell types`=recode(`Cell types`,
+    `CD8+ T Cells`="T cells",
+    `cDC2`="Dendritic cells",
+    `Mature B Cells`="B cells",
+    `Naive B Cells`="B cells",
+    `NK Cells`="NK cells",
+    `Plasma Cells`="B cells"
+  )) %>%
+  mutate(`Cell types`=ifelse(RNA_snn_res.0.3==8 & UMAP_1< -5, "pDCs",`Cell types`)) %>% 
+  mutate(Clusters=RNA_snn_res.0.3) %>%
+  mutate(Clusters=droplevels(Clusters)) %>%
+  mutate(Clusters=as.factor(as.numeric(Clusters)))
+
+```
+
+## UMAPs from chip sorting - cell titration and cluster frequencies
+
+```{r}
+
+p2 <- umap_meta %>%
+  ggplot(.) +
+  geom_point(aes(x=UMAP_1,y=UMAP_2),colour="black",size=1.2) +
+  geom_point(aes(x=UMAP_1,y=UMAP_2,colour=Clusters),size=0.8) +
+  scale_colour_manual(values=colors_pal) +
+  theme_bw() +
+  theme(
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    panel.border = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(size=18),
+    axis.title = element_text(size=20),
+    legend.text = element_text(size=18),
+    legend.title = element_text(size=20),
+    legend.position = "bottom",
+    legend.box.background = element_rect(color = "black", linewidth = 1)
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=1.2))) +
+  facet_wrap(~refined_sample_names)
+
+p3 <- umap_meta %>%
+  select(`Cells loaded`,Clusters) %>%
+  group_by(`Cells loaded`) %>%
+  mutate(total_cells=n()) %>%
+  group_by(`Cells loaded`,Clusters) %>%
+  mutate(cells_per_clust=n()) %>%
+  ungroup() %>%
+  mutate(`Cell proportion`=cells_per_clust/total_cells) %>%
+  ggplot(.,aes(x=`Cells loaded`,y=`Cell proportion`,fill=Clusters)) +
+  geom_col(position="fill") +
+  scale_fill_manual(values=colors_pal) +
+  xlab("Cells loaded") +
+  ylab("Proporition of cluster in a sample") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0))) +
+  theme_bw() +
+  theme(
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    axis.title = element_text(size=20),
+    axis.text = element_text(size=18),
+    legend.text = element_text(size=18),
+    legend.title = element_text(size=20),
+    legend.position = "bottom",
+    legend.box.background = element_rect(color = "black", linewidth = 1),
+    axis.text.x=element_text(angle=45,hjust=T)
+  )
+
+```
+
+## UMAPs from chip sorting - cell titration and cell type frequencies
+
+```{r stacked bar plot}
+
+p4 <- umap_meta %>%
+  ggplot(.) +
+  geom_point(aes(x=UMAP_1,y=UMAP_2),colour="black",size=1.2) +
+  geom_point(aes(x=UMAP_1,y=UMAP_2,colour=`Cell types`),size=0.8) +
+  scale_colour_manual(values=my_colors) +
+  theme_bw() +
+  theme(
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    panel.border = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(size=18),
+    axis.title = element_text(size=20),
+    legend.text = element_text(size=10),
+    legend.title = element_text(size=12),
+    legend.position="bottom",
+    legend.box.background = element_rect(color = "black", linewidth = 1)
+  ) +
+  guides(colour = guide_legend(nrow=3,override.aes = list(size=1.2))) +
+  facet_wrap(~refined_sample_names)
+
+p5 <- umap_meta %>%
+  select(`Cells loaded`,`Cell types`) %>%
+  group_by(`Cells loaded`) %>%
+  mutate(total_cells=n()) %>%
+  group_by(`Cells loaded`,`Cell types`) %>%
+  mutate(cells_per_clust=n()) %>%
+  ungroup() %>%
+  mutate(`Cell proportion`=cells_per_clust/total_cells) %>%
+  ggplot(.,aes(x=`Cells loaded`,y=`Cell proportion`,fill=`Cell types`)) +
+  geom_col(position="fill") +
+  scale_fill_manual(values=my_colors) +
+  ylab("Proporition of cluster in a sample") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0))) +
+  theme_bw() +
+  theme(
+    axis.title.x=element_blank(),
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    axis.title = element_text(size=20),
+    axis.text = element_text(size=18),
+    legend.text = element_text(size=10),
+    legend.title = element_text(size=12),
+    legend.position = "bottom",
+    legend.box.background = element_rect(color = "black", linewidth = 1),
+    axis.text.x=element_text(angle=45,hjust=TRUE)
+  )
+
+```
+
+## Create plot
+
+```{r}
+
+p1
+p2
+p3
+p4 
+p5
+
+```
+
+## Session info
+
+```{r}
+
+sessionInfo()
+
+```
+

@@ -1,0 +1,194 @@
+---
+title: "ChipSortPaper_Fig1"
+author: "Anthony R Cillo"
+date: "2026-05-22"
+output: github_document
+---
+
+## Load packages
+
+```{r}
+
+library(readxl)
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+library(dplyr)
+library(tidyverse)
+library(here)
+
+```
+
+## Read in files
+
+```{r}
+
+df_70 <- read_excel("../01_input/ChipSort_test_weight/ChipSort_test_weight_20260310.xlsx", sheet = "70uM")
+
+df_100 <- read_excel("../01_input/ChipSort_test_weight/ChipSort_test_weight_20260310.xlsx", sheet = "100uM")
+
+```
+
+## Colors to names 
+
+```{r colors}
+
+color_70 <- c("#79C6C8","#08979D","#5F9C94","#0F4C5C","#9A8BB0", "#5E548E", "#6A2E8C" )
+
+color_100 <- c("#D8A18B", "#FFC084","#F0A020","#E4571B","#B7492A","#F06A4A","#C97C6A")
+
+color_120 <- c("#C9D8A6", "#8FAF8F", "#5A7D4F","#A6C93C", "#929A68", "#4B5320", "#2E4600")
+
+```
+
+## Figure 1A
+
+```{r}
+
+summary_df_70 <- df_70 %>%
+  group_by(sorted_amount) %>%
+  summarise(
+    mean_diff = mean(difference),
+    sd_diff = sd(difference),
+    .groups = "drop")
+
+summary_df_70$sorted_amount <- factor(summary_df_70$sorted_amount,
+                                    levels = levels(df_70$sorted_amount))
+
+df_70$difference <- as.numeric(as.character(df_70$difference))
+df_70$sorted_amount <- as.numeric(as.character(df_70$sorted_amount))
+
+df_70$volume_per_cell_ml <- df_70$difference / df_70$sorted_amount
+
+df_70$volume_per_cell_nL <- df_70$volume_per_cell_ml * 1e6
+
+p1 <- ggplot(df_70, aes(x = as.factor(sorted_amount), y = volume_per_cell_nL)) +
+  geom_point(size = 3, alpha = 0.6, aes(color = factor(sorted_amount))) +
+  stat_summary(fun.data = mean_sdl, geom = "errorbar", width = 0.3) +
+  theme_bw() +
+  labs(
+    x = "Cells sorted",
+    y = "Calculated droplet\nvolume per cell (nL)",
+    title = "Precision of droplet volume - 70 uM nozzle"
+  ) +
+  scale_color_manual(values = color_70) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none",
+        axis.title=element_text(size=20),
+        axis.text=element_text(size=18),
+        title=element_text(size=20))
+
+p2 <- ggplot(df_70) +
+  geom_point(aes(x = sorted_amount, y = difference, color = as.factor(sorted_amount)),
+             alpha = 0.5, size = 3) +
+  geom_smooth(aes(x = sorted_amount, y = difference), method="lm",se = FALSE, color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(labels = scales::label_number(accuracy = 0.001)) +
+  theme_bw() +
+  labs(
+    x = "Cells sorted",
+    y = "Sorted mass (g)",
+    title = "Estimation of droplet size - 70 uM nozzle"
+  ) + 
+  scale_color_manual(values = color_70) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none",
+        axis.title=element_text(size=20),
+        axis.text=element_text(size=18),
+        title=element_text(size=20))
+
+#math 
+## 0.1g is ~1e5 cells
+## 0.1 / (1e5) = 1e-6 g/cell
+## (1e-6 g) * (1e-3 L / g) = 1e-9 L ~ 1 nL
+## 1 cell is ~ 1 nL @ 70 uM tip
+model <- lm(difference ~ sorted_amount, data = df_70)
+summary(model)
+coef(model)[2] * 1e-3 * 1e9
+
+```
+
+## Figure 1B
+
+```{r}
+
+summary_df_100 <- df_100 %>%
+  group_by(sorted_amount) %>%
+  summarise(
+    mean_diff = mean(difference),
+    sd_diff = sd(difference),
+    .groups = "drop")
+
+
+summary_df_100$sorted_amount <- factor(summary_df_100$sorted_amount,
+                                    levels = levels(df_100$sorted_amount))
+
+
+df_100$difference <- as.numeric(as.character(df_100$difference))
+df_100$sorted_amount <- as.numeric(as.character(df_100$sorted_amount))
+
+df_100$volume_per_cell_ml <- df_100$difference / df_100$sorted_amount
+
+df_100$volume_per_cell_nL <- df_100$volume_per_cell_ml * 1e6
+
+p3 <- ggplot(df_100, aes(x = factor(sorted_amount), y = volume_per_cell_nL)) +
+  geom_point(size = 3, alpha = 0.6, aes(color = factor(sorted_amount))) +
+  stat_summary(fun.data = mean_sdl, geom = "errorbar", width = 0.3) +
+  theme_bw() +
+  labs(
+    x = "Cells sorted",
+    y = "Calculated droplet\nvolume per cell (nL)",
+    title = "Precision of droplet volume - 100 uM nozzle"
+  ) +
+  scale_color_manual(values = color_100) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none",
+        axis.title=element_text(size=20),
+        axis.text=element_text(size=18),
+        title=element_text(size=20))
+
+p4 <- ggplot(df_100, aes(x = sorted_amount, y = difference)) +
+  geom_point(size = 3, alpha = 0.7, aes(color = factor(sorted_amount))) +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  theme_bw() +
+  labs(
+    x = "Cells sorted",
+    y = "Sorted mass (g)",
+    title = "Estimation of droplet size - 100uM nozzle") +
+  scale_color_manual(values = color_100) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none",
+        axis.title=element_text(size=20),
+        axis.text=element_text(size=18),
+        title=element_text(size=20))
+
+#math 
+## 0.3g is ~1e5 cells
+## 0.3 / (1e5) = 3e-6 g/cell
+## (3e-6 g) * (1e-3 L / g) = 3e-9 L ~ 3 nL
+## 1 cell is ~ 3 nL @ 100 uM tip
+model <- lm(difference ~ sorted_amount, data = df_100)
+summary(model)
+coef(model)[2] * 1e-3 * 1e9
+
+```
+
+## Visualize results
+
+```{r}
+
+p1
+p2
+p3
+p4
+
+```
+
+## Session info
+
+```{r}
+
+sessionInfo()
+
+```
+
